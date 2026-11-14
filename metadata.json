@@ -1,0 +1,6 @@
+{
+  "name": "LedgerCraft Accounting",
+  "description": "Small business accounting, petty cash tracking, inventory management, and interactive net income budget allocation dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

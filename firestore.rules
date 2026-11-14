@@ -1,0 +1,276 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isWorkspaceMember() {
+      return isSignedIn() && (
+        isAdmin() ||
+        exists(/databases/$(database)/documents/members/$(request.auth.uid))
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidDateStr(d) {
+      return d is string && d.size() == 10 && d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function workspaceExists(workspaceId) {
+      return exists(/databases/$(database)/documents/workspaces/$(workspaceId));
+    }
+
+    function isValidTxType(t) {
+      return t is string && t in ['sale', 'purchase', 'petty_cash_expense', 'operating_expense', 'petty_cash_replenish'];
+    }
+
+    function isValidPaymentMethod(m) {
+      return m is string && m in ['Bank Transfer', 'Card', 'Cash', 'Petty Cash'];
+    }
+
+    function isValidFrequency(f) {
+      return f is string && f in ['daily', 'weekly', 'monthly', 'yearly'];
+    }
+
+    function isValidWorkspace(data) {
+      return data.keys().hasAll(['businessName', 'currency', 'pettyCashLimit', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['businessName', 'currency', 'pettyCashLimit', 'createdAt', 'updatedAt']) &&
+        data.businessName is string && data.businessName.size() >= 1 && data.businessName.size() <= 120 &&
+        data.currency is string && data.currency.size() == 3 && data.currency.matches('^[A-Z]{3}$') &&
+        data.pettyCashLimit is number && data.pettyCashLimit > 0 && data.pettyCashLimit <= 10000000 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidInventoryItem(data) {
+      return data.keys().hasAll(['sku', 'name', 'category', 'totalStockLevel', 'stockRemaining', 'unitCost', 'sellingPrice', 'reorderLevel', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['sku', 'name', 'category', 'totalStockLevel', 'stockRemaining', 'unitCost', 'sellingPrice', 'reorderLevel', 'createdAt', 'updatedAt']) &&
+        data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 40 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 140 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.totalStockLevel is number && data.totalStockLevel >= 0 && data.totalStockLevel <= 10000000 &&
+        data.stockRemaining is number && data.stockRemaining >= 0 && data.stockRemaining <= data.totalStockLevel &&
+        data.unitCost is number && data.unitCost >= 0 && data.unitCost <= 10000000 &&
+        data.sellingPrice is number && data.sellingPrice >= 0 && data.sellingPrice <= 10000000 &&
+        data.reorderLevel is number && data.reorderLevel >= 0 && data.reorderLevel <= 10000000 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['date', 'type', 'description', 'category', 'amount', 'paymentMethod', 'reference', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['date', 'type', 'description', 'category', 'amount', 'paymentMethod', 'reference', 'skuId', 'quantity', 'unitPrice', 'cogs', 'budgetBucketId', 'recurringRuleId', 'notes', 'createdAt', 'updatedAt']) &&
+        isValidDateStr(data.date) &&
+        isValidTxType(data.type) &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 240 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.amount is number && data.amount > 0 && data.amount <= 100000000 &&
+        isValidPaymentMethod(data.paymentMethod) &&
+        data.reference is string && data.reference.size() >= 1 && data.reference.size() <= 40 &&
+        (!('skuId' in data) || (data.skuId is string && isValidId(data.skuId))) &&
+        (!('quantity' in data) || (data.quantity is number && data.quantity > 0 && data.quantity <= 10000000)) &&
+        (!('unitPrice' in data) || (data.unitPrice is number && data.unitPrice >= 0 && data.unitPrice <= 10000000)) &&
+        (!('cogs' in data) || (data.cogs is number && data.cogs >= 0 && data.cogs <= 100000000)) &&
+        (!('budgetBucketId' in data) || (data.budgetBucketId is string && isValidId(data.budgetBucketId))) &&
+        (!('recurringRuleId' in data) || (data.recurringRuleId is string && isValidId(data.recurringRuleId))) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() >= 1 && data.notes.size() <= 500)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBudgetRule(data) {
+      return data.keys().hasAll(['name', 'description', 'percentage', 'color', 'sortOrder', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['name', 'description', 'percentage', 'color', 'sortOrder', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+        data.description is string && data.description.size() <= 240 &&
+        data.percentage is number && data.percentage >= 0 && data.percentage <= 100 &&
+        data.color is string && data.color.size() >= 4 && data.color.size() <= 20 &&
+        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidRecurringRule(data) {
+      return data.keys().hasAll(['type', 'description', 'category', 'amount', 'paymentMethod', 'frequency', 'startDate', 'nextRunDate', 'approvalMode', 'active', 'totalPostedCount', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['type', 'description', 'category', 'amount', 'paymentMethod', 'frequency', 'startDate', 'nextRunDate', 'endDate', 'approvalMode', 'active', 'budgetBucketId', 'skuId', 'quantity', 'lastPostedDate', 'totalPostedCount', 'createdAt', 'updatedAt']) &&
+        isValidTxType(data.type) &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 240 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.amount is number && data.amount > 0 && data.amount <= 100000000 &&
+        isValidPaymentMethod(data.paymentMethod) &&
+        isValidFrequency(data.frequency) &&
+        isValidDateStr(data.startDate) &&
+        isValidDateStr(data.nextRunDate) &&
+        (!('endDate' in data) || isValidDateStr(data.endDate)) &&
+        data.approvalMode is string && data.approvalMode in ['auto_post', 'manual_review'] &&
+        data.active is bool &&
+        (!('budgetBucketId' in data) || (data.budgetBucketId is string && isValidId(data.budgetBucketId))) &&
+        (!('skuId' in data) || (data.skuId is string && isValidId(data.skuId))) &&
+        (!('quantity' in data) || (data.quantity is number && data.quantity > 0 && data.quantity <= 10000000)) &&
+        (!('lastPostedDate' in data) || isValidDateStr(data.lastPostedDate)) &&
+        data.totalPostedCount is number && data.totalPostedCount >= 0 && data.totalPostedCount <= 1000000 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPendingRecurring(data) {
+      return data.keys().hasAll(['ruleId', 'scheduledDate', 'type', 'description', 'category', 'amount', 'paymentMethod', 'frequency', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ruleId', 'scheduledDate', 'type', 'description', 'category', 'amount', 'paymentMethod', 'frequency', 'budgetBucketId', 'skuId', 'quantity', 'note', 'createdAt', 'updatedAt']) &&
+        data.ruleId is string && isValidId(data.ruleId) &&
+        isValidDateStr(data.scheduledDate) &&
+        isValidTxType(data.type) &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 240 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.amount is number && data.amount > 0 && data.amount <= 100000000 &&
+        isValidPaymentMethod(data.paymentMethod) &&
+        isValidFrequency(data.frequency) &&
+        (!('budgetBucketId' in data) || (data.budgetBucketId is string && isValidId(data.budgetBucketId))) &&
+        (!('skuId' in data) || (data.skuId is string && isValidId(data.skuId))) &&
+        (!('quantity' in data) || (data.quantity is number && data.quantity > 0 && data.quantity <= 10000000)) &&
+        (!('note' in data) || (data.note is string && data.note.size() >= 1 && data.note.size() <= 300)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && isSignedIn() && request.auth.uid == userId;
+      allow list, create, update, delete: if false;
+    }
+
+    match /members/{userId} {
+      allow get: if isValidId(userId) && isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin() && resource.data.uid is string;
+      allow create, update, delete: if false;
+    }
+
+    match /workspaces/{workspaceId} {
+      allow get: if isValidId(workspaceId) && isWorkspaceMember();
+      allow list: if isWorkspaceMember() && resource.data.businessName is string;
+      allow create: if isValidId(workspaceId) && isAdmin() &&
+        isValidWorkspace(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(workspaceId) && isAdmin() &&
+        isValidWorkspace(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['businessName', 'currency', 'pettyCashLimit', 'updatedAt']);
+      allow delete: if false;
+
+      match /inventory/{itemId} {
+        allow get: if isValidId(workspaceId) && isValidId(itemId) && isWorkspaceMember() && workspaceExists(workspaceId);
+        allow list: if isWorkspaceMember() && resource.data.sku is string;
+        allow create: if isValidId(workspaceId) && isValidId(itemId) && isAdmin() &&
+          isValidInventoryItem(incoming()) &&
+          workspaceExists(workspaceId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time;
+        allow update: if isValidId(workspaceId) && isValidId(itemId) && isAdmin() &&
+          isValidInventoryItem(incoming()) &&
+          workspaceExists(workspaceId) &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            incoming().diff(existing()).affectedKeys().hasOnly(['stockRemaining', 'totalStockLevel', 'unitCost', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['sku', 'name', 'category', 'totalStockLevel', 'stockRemaining', 'unitCost', 'sellingPrice', 'reorderLevel', 'updatedAt'])
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(itemId) && isAdmin() && workspaceExists(workspaceId);
+      }
+
+      match /transactions/{txId} {
+        allow get: if isValidId(workspaceId) && isValidId(txId) && isWorkspaceMember() && workspaceExists(workspaceId);
+        allow list: if isWorkspaceMember() && resource.data.date is string;
+        allow create: if isValidId(workspaceId) && isValidId(txId) && isAdmin() &&
+          isValidTransaction(incoming()) &&
+          workspaceExists(workspaceId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time;
+        allow update: if isValidId(workspaceId) && isValidId(txId) && isAdmin() &&
+          isValidTransaction(incoming()) &&
+          workspaceExists(workspaceId) &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['description', 'category', 'notes', 'updatedAt']);
+        allow delete: if isValidId(workspaceId) && isValidId(txId) && isAdmin() && workspaceExists(workspaceId);
+      }
+
+      match /budgetRules/{ruleId} {
+        allow get: if isValidId(workspaceId) && isValidId(ruleId) && isWorkspaceMember() && workspaceExists(workspaceId);
+        allow list: if isWorkspaceMember() && resource.data.name is string;
+        allow create: if isValidId(workspaceId) && isValidId(ruleId) && isAdmin() &&
+          isValidBudgetRule(incoming()) &&
+          workspaceExists(workspaceId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time;
+        allow update: if isValidId(workspaceId) && isValidId(ruleId) && isAdmin() &&
+          isValidBudgetRule(incoming()) &&
+          workspaceExists(workspaceId) &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'percentage', 'color', 'sortOrder', 'updatedAt']);
+        allow delete: if isValidId(workspaceId) && isValidId(ruleId) && isAdmin() && workspaceExists(workspaceId);
+      }
+
+      match /recurringRules/{ruleId} {
+        allow get: if isValidId(workspaceId) && isValidId(ruleId) && isWorkspaceMember() && workspaceExists(workspaceId);
+        allow list: if isWorkspaceMember() && resource.data.frequency is string;
+        allow create: if isValidId(workspaceId) && isValidId(ruleId) && isAdmin() &&
+          isValidRecurringRule(incoming()) &&
+          workspaceExists(workspaceId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time;
+        allow update: if isValidId(workspaceId) && isValidId(ruleId) && isAdmin() &&
+          isValidRecurringRule(incoming()) &&
+          workspaceExists(workspaceId) &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            incoming().diff(existing()).affectedKeys().hasOnly(['nextRunDate', 'lastPostedDate', 'totalPostedCount', 'active', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['type', 'description', 'category', 'amount', 'paymentMethod', 'frequency', 'nextRunDate', 'endDate', 'approvalMode', 'active', 'budgetBucketId', 'updatedAt'])
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(ruleId) && isAdmin() && workspaceExists(workspaceId);
+      }
+
+      match /pendingRecurring/{pendingId} {
+        allow get: if isValidId(workspaceId) && isValidId(pendingId) && isWorkspaceMember() && workspaceExists(workspaceId);
+        allow list: if isWorkspaceMember() && resource.data.ruleId is string;
+        allow create: if isValidId(workspaceId) && isValidId(pendingId) && isAdmin() &&
+          isValidPendingRecurring(incoming()) &&
+          workspaceExists(workspaceId) &&
+          exists(/databases/$(database)/documents/workspaces/$(workspaceId)/recurringRules/$(incoming().ruleId)) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time;
+        allow update: if isValidId(workspaceId) && isValidId(pendingId) && isAdmin() &&
+          isValidPendingRecurring(incoming()) &&
+          workspaceExists(workspaceId) &&
+          incoming().ruleId == existing().ruleId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['amount', 'scheduledDate', 'description', 'updatedAt']);
+        allow delete: if isValidId(workspaceId) && isValidId(pendingId) && isAdmin() && workspaceExists(workspaceId);
+      }
+    }
+  }
+}

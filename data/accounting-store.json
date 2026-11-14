@@ -1,0 +1,39 @@
+{
+  "businessName": "Northwind Roastery & Goods",
+  "currency": "NPR",
+  "pettyCashLimit": 15000,
+  "budgetRules": [
+    {
+      "id": "advertising",
+      "name": "Advertising",
+      "description": "Paid search, social campaigns, and customer acquisition",
+      "percentage": 10,
+      "color": "#0F766E"
+    },
+    {
+      "id": "branding",
+      "name": "Branding (Packaging & Labels)",
+      "description": "Custom boxes, woven tags, adhesive labels, and inserts",
+      "percentage": 5,
+      "color": "#D97706"
+    },
+    {
+      "id": "reinvestment",
+      "name": "Reinvestment",
+      "description": "Inventory restocking, tooling, and operational growth",
+      "percentage": 50,
+      "color": "#1D4ED8"
+    },
+    {
+      "id": "savings",
+      "name": "Savings Reserve",
+      "description": "Business emergency fund and retained cash reserve",
+      "percentage": 35,
+      "color": "#334155"
+    }
+  ],
+  "recurringRules": [],
+  "pendingRecurring": [],
+  "inventory": [],
+  "transactions": []
+}
